@@ -4,7 +4,7 @@
 /*global global, exports, module, require:false, process:false, Buffer:false, ArrayBuffer:false */
 var XLSX = {};
 function make_xlsx_lib(XLSX){
-XLSX.version = '0.16.9';
+XLSX.version = '0.16.8';
 var current_codepage = 1200, current_ansi = 1252;
 /*global cptable:true, window */
 if(typeof module !== "undefined" && typeof require !== 'undefined') {
@@ -4700,6 +4700,10 @@ function write_ct(ct, opts) {
 	f3('vba');
 	f3('comments');
 	f3('drawings');
+	// HM Add
+	ct.sheets.forEach(function(sheet, index){
+		o[o.length] = '<Override PartName="/xl/drawings/drawing' + (index + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>';
+	});
 	if(o.length>2){ o[o.length] = ('</Types>'); o[1]=o[1].replace("/>",">"); }
 	return o.join("");
 }
@@ -4751,6 +4755,46 @@ var RELS_ROOT = writextag('Relationships', null, {
 	//'xmlns:ns0': XMLNS.RELS,
 	'xmlns': XMLNS.RELS
 });
+
+// HM Add
+var DRAW_ROOT = writextag('xdr:wsDr', null, {
+	'xmlns:xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
+	'xmlns:a': 'http://schemas.openxmlformats.org/drawingml/2006/main'
+	//'xmlns:ns0': XMLNS.RELS,
+	// 'xmlns': XMLNS.RELS
+});
+
+function write_drawing(images, rId) {
+	var o = [];
+	o[o.length] = (XML_HEADER);
+	o[o.length] = (DRAW_ROOT);
+
+	for (var i = 0; i < images.length; i++) {
+		var image = images[i];
+		var pos = image.position || {};
+		if (pos.type === 'twoCellAnchor') {
+			var from = pos.from || {}, to = pos.to || {},
+				fromCol = from.col || 0, toCol = to.col || 0,
+				fromColOff = from.colOff || 0, toColOff = to.colOff || 0,
+				fromRow = from.row || 0, toRow = to.row || 0,
+				fromRowOff = from.rowOff || 0, toRowOff = to.rowOff || 0;
+
+			var twoCell = '<xdr:from><xdr:col>' + fromCol + '</xdr:col><xdr:colOff>'+ fromColOff + '</xdr:colOff><xdr:row>' + fromRow + '</xdr:row><xdr:rowOff>'+fromRowOff +'</xdr:rowOff></xdr:from>';
+			twoCell += '<xdr:to><xdr:col>' + toCol + '</xdr:col><xdr:colOff>'+toColOff+'</xdr:colOff><xdr:row>' + toRow + '</xdr:row><xdr:rowOff>'+toRowOff+'</xdr:rowOff></xdr:to>';
+			twoCell += '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="' + rId + '" name="' + image.name + '">';
+			twoCell += '</xdr:cNvPr><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>';
+			twoCell += '<xdr:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId' + rId + '"/>';
+			twoCell += '<a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/>';
+			o[o.length] = (writextag('xdr:twoCellAnchor', twoCell, images[i].attrs));
+		}
+	}
+
+	if (o.length > 2) {
+		o[o.length] = ('</xdr:wsDr>');
+		o[1] = o[1].replace("/>", ">");
+	}
+	return o.join("");
+}
 
 /* TODO */
 function write_rels(rels) {
@@ -8947,10 +8991,11 @@ var XLMLPatternTypeMap = {
 	"ThinHorzCross": "lightGrid"
 };
 
+// HM Add
 /* 18.8.5 borders CT_Borders */
 function parse_borders(t, styles, themes, opts) {
 	styles.Borders = [];
-	var border = {};
+	var border = {}, sub_border = {};
 	var pass = false;
 	(t[0].match(tagregex)||[]).forEach(function(x) {
 		var y = parsexmltag(x);
@@ -8967,49 +9012,109 @@ function parse_borders(t, styles, themes, opts) {
 			case '</border>': break;
 
 			/* note: not in spec, appears to be CT_BorderPr */
-			case '<left/>': break;
-			case '<left': case '<left>': break;
+			case '<left': case '<left>': 
+			sub_border = border.left = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<left/>': 
 			case '</left>': break;
 
 			/* note: not in spec, appears to be CT_BorderPr */
-			case '<right/>': break;
-			case '<right': case '<right>': break;
+			case '<right': case '<right>': 
+			sub_border = border.right = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<right/>': 
 			case '</right>': break;
 
 			/* 18.8.43 top CT_BorderPr */
-			case '<top/>': break;
-			case '<top': case '<top>': break;
+			case '<top': case '<top>': 
+			sub_border = border.top = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<top/>': 
 			case '</top>': break;
 
 			/* 18.8.6 bottom CT_BorderPr */
-			case '<bottom/>': break;
-			case '<bottom': case '<bottom>': break;
+			case '<bottom': case '<bottom>': 
+			sub_border = border.bottom = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<bottom/>': 
 			case '</bottom>': break;
 
 			/* 18.8.13 diagonal CT_BorderPr */
-			case '<diagonal': case '<diagonal>': case '<diagonal/>': break;
+			case '<diagonal': case '<diagonal>':
+			sub_border = border.diagonal = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<diagonal/>': 
 			case '</diagonal>': break;
 
 			/* 18.8.25 horizontal CT_BorderPr */
-			case '<horizontal': case '<horizontal>': case '<horizontal/>': break;
+			case '<horizontal': case '<horizontal>': 
+			sub_border = border.horizontal = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<horizontal/>':
 			case '</horizontal>': break;
 
 			/* 18.8.44 vertical CT_BorderPr */
-			case '<vertical': case '<vertical>': case '<vertical/>': break;
+			case '<vertical': case '<vertical>': 
+			sub_border = border.vertical = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<vertical/>':
 			case '</vertical>': break;
 
 			/* 18.8.37 start CT_BorderPr */
-			case '<start': case '<start>': case '<start/>': break;
+			case '<start': case '<start>':
+			sub_border = border.start = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<start/>': 
 			case '</start>': break;
 
 			/* 18.8.16 end CT_BorderPr */
-			case '<end': case '<end>': case '<end/>': break;
+			case '<end': case '<end>': 
+			sub_border = border.end = {};
+			if (y.style) {
+			  sub_border.style = y.style;
+			}
+			break;
+			case '<end/>':
 			case '</end>': break;
 
 			/* 18.8.? color CT_Color */
 			case '<color': case '<color>':
-				break;
-			case '<color/>': case '</color>': break;
+			sub_border.color = {};
+			if (y.theme) sub_border.color.theme = y.theme;
+			if (y.theme && themes.themeElements && themes.themeElements.clrScheme) {
+			  sub_border.color.rgb = rgb_tint(themes.themeElements.clrScheme[sub_border.color.theme].rgb, sub_border.color.tint || 0);
+			}
+	
+			if (y.tint) sub_border.color.tint = y.tint;
+			if (y.rgb) sub_border.color.rgb = y.rgb;
+			if (y.auto) sub_border.color.auto = y.auto;
+			break;
+			case '<color/>':
+			case '</color>': break;
 
 			/* 18.2.10 extLst CT_ExtensionList ? */
 			case '<extLst': case '<extLst>': case '</extLst>': break;
@@ -9367,6 +9472,11 @@ var STYLES_XML_ROOT = writextag('styleSheet', null, {
 RELS.STY = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
 
 function write_sty_xml(wb, opts) {
+	// HM Add
+	if (typeof style_builder != 'undefined' && typeof 'require' != 'undefined') {
+		return style_builder.toXml();
+	}
+
 	var o = [XML_HEADER, STYLES_XML_ROOT], w;
 	if(wb.SSF && (w = write_numFmts(wb.SSF)) != null) o[o.length] = w;
 	o[o.length] = ('<fonts count="1"><font><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts>');
@@ -13133,6 +13243,15 @@ function default_margins(margins, mode) {
 }
 
 function get_cell_style(styles, cell, opts) {
+	// HM Add
+	if (typeof style_builder != 'undefined') {
+		if (/^\d+$/.exec(cell.s)) { return cell.s}  // if its already an integer index, let it be
+		if (cell.s && (cell.s == +cell.s)) { return cell.s}  // if its already an integer index, let it be
+		var s = cell.s || {};
+		if (cell.z) s.numFmt = cell.z;
+		return style_builder.addStyle(s);
+	}
+
 	var z = opts.revssf[cell.z != null ? cell.z : "General"];
 	var i = 0x3c, len = styles.length;
 	if(z == null && opts.ssf) {
@@ -13183,15 +13302,16 @@ function safe_format(p, fmtid, fillid, opts, themes, styles) {
 	} catch(e) { if(opts.WTF) throw e; }
 	if(!opts.cellStyles) return;
 	if(fillid != null) try {
-		p.s = styles.Fills[fillid];
-		if (p.s.fgColor && p.s.fgColor.theme && !p.s.fgColor.rgb) {
-			p.s.fgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p.s.fgColor.theme].rgb, p.s.fgColor.tint || 0);
-			if(opts.WTF) p.s.fgColor.raw_rgb = themes.themeElements.clrScheme[p.s.fgColor.theme].rgb;
-		}
-		if (p.s.bgColor && p.s.bgColor.theme) {
-			p.s.bgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p.s.bgColor.theme].rgb, p.s.bgColor.tint || 0);
-			if(opts.WTF) p.s.bgColor.raw_rgb = themes.themeElements.clrScheme[p.s.bgColor.theme].rgb;
-		}
+		// HM Add
+		// p.s = styles.Fills[fillid];
+		// if (p.s.fgColor && p.s.fgColor.theme && !p.s.fgColor.rgb) {
+		// 	p.s.fgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p.s.fgColor.theme].rgb, p.s.fgColor.tint || 0);
+		// 	if(opts.WTF) p.s.fgColor.raw_rgb = themes.themeElements.clrScheme[p.s.fgColor.theme].rgb;
+		// }
+		// if (p.s.bgColor && p.s.bgColor.theme) {
+		// 	p.s.bgColor.rgb = rgb_tint(themes.themeElements.clrScheme[p.s.bgColor.theme].rgb, p.s.bgColor.tint || 0);
+		// 	if(opts.WTF) p.s.bgColor.raw_rgb = themes.themeElements.clrScheme[p.s.bgColor.theme].rgb;
+		// }
 	} catch(e) { if(opts.WTF && styles.Fills) throw e; }
 }
 
@@ -13216,7 +13336,7 @@ var sheetprregex = /<(?:\w:)?sheetPr\b(?:[^>a-z][^>]*)?\/>/;
 var svsregex = /<(?:\w:)?sheetViews[^>]*(?:[\/]|>([\s\S]*)<\/(?:\w:)?sheetViews)>/;
 
 /* 18.3 Worksheets */
-function parse_ws_xml(data, opts, idx, rels, wb, themes, styles) {
+function parse_ws_xml(data, opts, idx, rels, wb, themes, styles, zip) {
 	if(!data) return data;
 	if(!rels) rels = {'!id':{}};
 	if(DENSE != null && opts.dense == null) opts.dense = DENSE;
@@ -13291,8 +13411,139 @@ function parse_ws_xml(data, opts, idx, rels, wb, themes, styles) {
 	}
 	if(columns.length > 0) s["!cols"] = columns;
 	if(merges.length > 0) s["!merges"] = merges;
+	// HM Add(含参数zip)
+	try {
+		parse_images(zip, s, rels)
+	} catch(ex) {
+		console.error(ex)
+	}
 	return s;
 }
+
+// HM Add
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+function parse_images (zip, sheet, rels) {
+	var images = sheet['!images'] = []
+	var drawings = Object.keys(rels || {}).filter(function (v) { return v.indexOf('xl/drawings/') > -1; }) || []
+	drawings.forEach(function (drawing) {
+	  drawing = drawing.substring(1)
+	  var drawing_relsfile = 'xl/drawings/_rels/' + drawing.split('xl/drawings/')[1] + '.rels'
+	  var str = getzipstr(zip, drawing_relsfile, true)
+	  if (str) {
+		var drawing_rels = parse_rels(str, '/' + drawing)
+		var objs = {}
+		Object.keys(drawing_rels || {}).forEach(function (r) {
+		  if (r.indexOf('media/') > -1) {
+			objs[drawing_rels[r].Id] = r.substring(1)
+		  }
+		})
+		var xmlDoc = new XmlDocument(getzipstr(zip, drawing))
+		var anchors = xmlDoc.getNodes('xdr:twoCellAnchor')
+		anchors.forEach(function (anchor) {
+		  var blip = anchor.find('a:blip').getAttributes()
+		  var objKey = objs[blip.embed]
+		  objKey && images.push(getImgData(anchor, sheet, objKey, zip))
+		})
+	  }
+	})
+}
+
+function getImgData (anchor, s, objKey, zip) {
+	var fromCol = anchor.find('xdr:from').find('xdr:col').getInnerText()
+	var fromColOff = anchor.find('xdr:from').find('xdr:colOff').getInnerText()
+	var fromRow = anchor.find('xdr:from').find('xdr:row').getInnerText()
+	var fromRowOff = anchor.find('xdr:from').find('xdr:rowOff').getInnerText()
+	var toCol = anchor.find('xdr:to').find('xdr:col').getInnerText()
+	var toColOff = anchor.find('xdr:to').find('xdr:colOff').getInnerText()
+	var toRow = anchor.find('xdr:to').find('xdr:row').getInnerText()
+	var toRowOff = anchor.find('xdr:to').find('xdr:rowOff').getInnerText()
+
+	return {
+		data: Base64.encode(getzipdata(zip, objKey)),
+		opts: {
+			base64: true
+		},
+		name: objKey.split('xl/media/')[1],
+		type: "png",
+		position: {
+			type: 'twoCellAnchor',
+			attrs: {
+				editAs: 'oneCell'
+			},
+			from: {
+				col: parseInt(fromCol, 10),
+				fromColOff: parseInt(fromColOff, 10),
+				row: parseInt(fromRow, 10),
+				rowOff: parseInt(fromRowOff, 10),
+			},
+			to: {
+				col: parseInt(toCol, 10),
+				colOff: parseInt(toColOff, 10),
+				row: parseInt(toRow, 10),
+				rowOff: parseInt(toRowOff, 10),
+			}
+		}
+	}
+}
+
+function XmlDocument (data) {
+	this.data = (data || '').replace(/\n/g, '')
+	this.children = []
+  }
+  XmlDocument.prototype.getNodes = function (name) {
+	if (!this.children[name]) {
+	  var reg = new RegExp('(<' + name + '.*?>.*?<\/' + name + '?>)', 'ig')
+	  var matches = this.data.match(reg) || []
+	  var children = this.children[name] = []
+	  for (var i = 0, k = matches.length; i < k; i++) {
+		children.push(new XmlNodeParser(matches[i], name))
+	  }
+	}
+	return this.children[name]
+  }
+  
+  XmlDocument.prototype.find = function (name) {
+	return this.getNodes(name)[0] || new XmlNodeParser('')
+  }
+  
+  XmlDocument.prototype.getInnerText = function () {
+	return this.trim(this.data.match(/>([^<>].*?)<\//g))
+  }
+  
+  XmlDocument.prototype.getInnerXml = function () {
+	return this.trim(this.data.match(/>.*<\//))
+  }
+  
+  XmlDocument.prototype.trim = function (matches) {
+	matches = matches || []
+	var value = ''
+	for (var i = 0, k = matches.length; i < k; i++) {
+	  value = matches[i].substring(1, matches[i].length - 2)
+	}
+	return value
+  }
+  
+  XmlDocument.prototype.getAttributes = function () {
+	if (!this.attributes) {
+	  this.attributes = {}
+	  var starttag = this.data.split('</')[0] || ''
+	  var matches = starttag.match(/(\w*)=".*?"/g) || []
+	  for (var i = 0, k = matches.length; i < k; i++) {
+		var kv = matches[i].split('=')
+		var v = kv[1] || ''
+		this.attributes[kv[0]] = v.substring(1, v.length - 1)
+	  }
+	}
+	return this.attributes
+  }
+  
+  function XmlNodeParser (data, name) {
+	this.name = name
+	this.data = data
+	this.children = []
+  }
+  XmlNodeParser.prototype = new XmlDocument()
+/////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function write_ws_xml_merges(merges) {
 	if(merges.length === 0) return "";
@@ -13305,7 +13556,7 @@ function write_ws_xml_merges(merges) {
 function parse_ws_xml_sheetpr(sheetPr, s, wb, idx) {
 	var data = parsexmltag(sheetPr);
 	if(!wb.Sheets[idx]) wb.Sheets[idx] = {};
-	if(data.codeName) wb.Sheets[idx].CodeName = unescapexml(utf8read(data.codeName));
+	if(data.codeName) wb.Sheets[idx].CodeName = data.codeName;
 }
 function write_ws_xml_sheetpr(ws, wb, idx, opts, o) {
 	var needed = false;
@@ -13314,14 +13565,7 @@ function write_ws_xml_sheetpr(ws, wb, idx, opts, o) {
 		var cname = wb.SheetNames[idx];
 		try { if(wb.Workbook) cname = wb.Workbook.Sheets[idx].CodeName || cname; } catch(e) {}
 		needed = true;
-		props.codeName = utf8write(escapexml(cname));
-	}
-
-	if(ws && ws["!outline"]) {
-		var outlineprops = {summaryBelow:1, summaryRight:1};
-		if(ws["!outline"].above) outlineprops.summaryBelow = 0;
-		if(ws["!outline"].left) outlineprops.summaryRight = 0;
-		payload = (payload||"") + writextag('outlinePr', null, outlineprops);
+		props.codeName = escapexml(cname);
 	}
 
 	if(!needed && !payload) return;
@@ -13498,7 +13742,7 @@ function write_ws_xml_cell(cell, ref, ws, opts) {
 }
 
 var parse_ws_xml_data = (function() {
-	var cellregex = /<(?:\w+:)?c[ \/>]/, rowregex = /<\/(?:\w+:)?row>/;
+	var cellregex = /<(?:\w+:)?c[ >]/, rowregex = /<\/(?:\w+:)?row>/;
 	var rregex = /r=["']([^"']*)["']/, isregex = /<(?:\w+:)?is>([\S\s]*?)<\/(?:\w+:)?is>/;
 	var refregex = /ref=["']([^"']*)["']/;
 	var match_v = matchtag("v"), match_f = matchtag("f");
@@ -13643,6 +13887,10 @@ return function parse_ws_xml_data(sdata, s, opts, guess, themes, styles) {
 			cf = null;
 			if(do_format && tag.s !== undefined) {
 				cf = styles.CellXf[tag.s];
+				// HM Add
+				if (opts.cellStyles) {
+					p.cellXfId = tag.s; // cell样式索引
+				}
 				if(cf != null) {
 					if(cf.numFmtId != null) fmtid = cf.numFmtId;
 					if(opts.cellStyles) {
@@ -13822,7 +14070,10 @@ ws['!links'].forEach(function(l) {
 	/* webPublishItems */
 	/* tableParts */
 	/* extLst */
-
+	// HM Add
+    var images = ws['!images'] || [];
+	if (images.length) o[o.length] = '<drawing r:id="rId' + (idx + 1) + '"/>';
+	
 	if(o.length>1) { o[o.length] = ('</worksheet>'); o[1]=o[1].replace("/>",">"); }
 	return o.join("");
 }
@@ -15561,9 +15812,9 @@ function parse_wb(data, name, opts) {
 	return parse_wb_xml((data), opts);
 }
 
-function parse_ws(data, name, idx, opts, rels, wb, themes, styles) {
+function parse_ws(data, name, idx, opts, rels, wb, themes, styles, zip) {
 	if(name.slice(-4)===".bin") return parse_ws_bin((data), opts, idx, rels, wb, themes, styles);
-	return parse_ws_xml((data), opts, idx, rels, wb, themes, styles);
+	return parse_ws_xml((data), opts, idx, rels, wb, themes, styles, zip);
 }
 
 function parse_cs(data, name, idx, opts, rels, wb, themes, styles) {
@@ -19905,7 +20156,6 @@ var parse_content_xml = (function() {
 			case 'scripts': // 3.12 <office:scripts>
 			case 'styles': // TODO <office:styles>
 			case 'font-face-decls': // 3.14 <office:font-face-decls>
-			case 'master-styles': //3.15.4 <office:master-styles> -- relevant for FODS
 				if(Rn[1]==='/'){if((tmp=state.pop())[0]!==Rn[3]) throw "Bad state: "+tmp;}
 				else if(Rn[0].charAt(Rn[0].length-2) !== '/') state.push([Rn[3], true]);
 				break;
@@ -19972,6 +20222,7 @@ var parse_content_xml = (function() {
 			case 'script': break; // 3.13 <office:script>
 			case 'libraries': break; // TODO: <ooo:libraries>
 			case 'automatic-styles': break; // 3.15.3 <office:automatic-styles>
+			case 'master-styles': break; // TODO: <office:master-styles>
 
 			case 'default-style': // TODO: <style:default-style>
 			case 'page-layout': break; // TODO: <style:page-layout>
@@ -20068,7 +20319,6 @@ var parse_content_xml = (function() {
 			case 'line-break': break; // 6.1.5 <text:line-break>
 			case 'span': break; // 6.1.7 <text:span>
 			case 'p': case '文本串': // 5.1.3 <text:p>
-				if(['master-styles'].indexOf(state[state.length-1][0]) > -1) break;
 				if(Rn[1]==='/' && (!ctag || !ctag['string-value'])) {
 					var ptp = parse_text_p(str.slice(textpidx,Rn.index), textptag);
 					textp = (textp.length > 0 ? textp + "\n" : "") + ptp[0];
@@ -20575,7 +20825,7 @@ function safe_parse_sheet(zip, path, relsPath, sheet, idx, sheetRels, sheets, st
 		var data = getzipdata(zip, path);
 		var _ws;
 		switch(stype) {
-			case 'sheet':  _ws = parse_ws(data, path, idx, opts, sheetRels[sheet], wb, themes, styles); break;
+			case 'sheet':  _ws = parse_ws(data, path, idx, opts, sheetRels[sheet], wb, themes, styles, zip); break;
 			case 'chart':  _ws = parse_cs(data, path, idx, opts, sheetRels[sheet], wb, themes, styles);
 				if(!_ws || !_ws['!drawel']) break;
 				var dfile = resolve_path(_ws['!drawel'].Target, path);
@@ -20860,6 +21110,24 @@ f = "docProps/app.xml";
 	for(rId=1;rId <= wb.SheetNames.length; ++rId) {
 		var wsrels = {'!id':{}};
 		var ws = wb.Sheets[wb.SheetNames[rId-1]];
+		
+        // HM Add
+		var images = ws['!images'] || [];
+		// var rels = ws['!rels'] = [],
+		if (images.length > 0) {
+			var rels = ws['!rels'] = [], draw_rels = [];
+			for (var sId = 1; sId < images.length + 1; ++sId) {
+				var image = images[sId - 1];
+				f = 'xl/media/' + image.name;
+				zip.file(f, image.data, image.opts);
+				add_rels(draw_rels, sId, "../media/" + image.name, RELS.IMG);
+			}
+			zip_add_file(zip, "xl/drawings/drawing" + rId + "." + wbext, write_drawing(images, rId));
+			add_rels(rels, rId, "../drawings/drawing" + rId + "." + wbext, RELS.DRAW);
+			zip_add_file(zip, "xl/drawings/_rels/drawing" + rId + "." + wbext + ".rels", write_rels(draw_rels));
+			zip_add_file(zip, "xl/worksheets/_rels/sheet" + rId + "." + wbext + '.rels', write_rels(rels));
+		}
+		
 		var _type = (ws || {})["!type"] || "sheet";
 		switch(_type) {
 		case "chart":
@@ -21048,6 +21316,7 @@ function write_cfb_ctr(cfb, o) {
 
 function write_zip_type(wb, opts) {
 	var o = opts||{};
+	style_builder  = new StyleBuilder(opts); // HM Add
 	var z = write_zip(wb, o);
 	var oopts = {};
 	if(o.compression) oopts.compression = 'DEFLATE';
@@ -21688,6 +21957,469 @@ if(has_buf && typeof require != 'undefined') (function() {
 		to_csv: write_csv_stream
 	};
 })();
+// HM Add
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+var XmlNode = (function () {
+	function XmlNode(tagName, attributes, children) {
+  
+	  if (!(this instanceof XmlNode)) {
+		return new XmlNode(tagName, attributes, children);
+	  }
+	  this.tagName = tagName;
+	  this._attributes = attributes || {};
+	  this._children = children || [];
+	  this._prefix = '';
+	  return this;
+	}
+  
+	XmlNode.prototype.createElement = function () {
+	  return new XmlNode(arguments)
+	}
+  
+	XmlNode.prototype.children = function() {
+	  return this._children;
+	}
+  
+	XmlNode.prototype.append = function (node) {
+	  this._children.push(node);
+	  return this;
+	}
+  
+	XmlNode.prototype.prefix = function (prefix) {
+	  if (arguments.length==0) { return this._prefix;}
+	  this._prefix = prefix;
+	  return this;
+	}
+  
+	XmlNode.prototype.attr = function (attr, value) {
+	  if (value == undefined) {
+		delete this._attributes[attr];
+		return this;
+	  }
+	  if (arguments.length == 0) {
+		return this._attributes;
+	  }
+	  else if (typeof attr == 'string' && arguments.length == 1) {
+		return this._attributes.attr[attr];
+	  }
+	  if (typeof attr == 'object' && arguments.length == 1) {
+		for (var key in attr) {
+		  this._attributes[key] = attr[key];
+		}
+	  }
+	  else if (arguments.length == 2 && typeof attr == 'string') {
+		this._attributes[attr] = value;
+	  }
+	  return this;
+	}
+  
+	var APOS = "'"; QUOTE = '"'
+	var ESCAPED_QUOTE = {  }
+	ESCAPED_QUOTE[QUOTE] = '&quot;'
+	ESCAPED_QUOTE[APOS] = '&apos;'
+  
+	XmlNode.prototype.escapeAttributeValue = function(att_value) {
+	  return '"' + att_value.replace(/\"/g,'&quot;') + '"';// TODO Extend with four other codes
+  
+	}
+  
+	XmlNode.prototype.toXml = function (node) {
+	  if (!node) node = this;
+	  var xml = node._prefix;
+	  xml += '<' + node.tagName;
+	  if (node._attributes) {
+		for (var key in node._attributes) {
+		  xml += ' ' + key + '=' + this.escapeAttributeValue(''+node._attributes[key]) + ''
+		}
+	  }
+	  if (node._children && node._children.length > 0) {
+		xml += ">";
+		for (var i = 0; i < node._children.length; i++) {
+		  xml += this.toXml(node._children[i]);
+		}
+		xml += '</' + node.tagName + '>';
+	  }
+	  else {
+		xml += '/>';
+	  }
+	  return xml;
+	}
+	return XmlNode;
+})();
+  
+var StyleBuilder = function (options) {
+
+    var customNumFmtId = 164;
+
+    var table_fmt = {
+      0:  'General',
+      1:  '0',
+      2:  '0.00',
+      3:  '#,##0',
+      4:  '#,##0.00',
+      9:  '0%',
+      10: '0.00%',
+      11: '0.00E+00',
+      12: '# ?/?',
+      13: '# ??/??',
+      14: 'm/d/yy',
+      15: 'd-mmm-yy',
+      16: 'd-mmm',
+      17: 'mmm-yy',
+      18: 'h:mm AM/PM',
+      19: 'h:mm:ss AM/PM',
+      20: 'h:mm',
+      21: 'h:mm:ss',
+      22: 'm/d/yy h:mm',
+      37: '#,##0 ;(#,##0)',
+      38: '#,##0 ;[Red](#,##0)',
+      39: '#,##0.00;(#,##0.00)',
+      40: '#,##0.00;[Red](#,##0.00)',
+      45: 'mm:ss',
+      46: '[h]:mm:ss',
+      47: 'mmss.0',
+      48: '##0.0E+0',
+      49: '@',
+      56: '"上午/下午 "hh"時"mm"分"ss"秒 "'    };
+    var fmt_table = {};
+
+    for (var idx in table_fmt) {
+      fmt_table[table_fmt[idx]] = idx;
+    }
+
+
+    // cache style specs to avoid excessive duplication
+    _hashIndex = {};
+    _listIndex = [];
+
+    return {
+
+      initialize: function (options) {
+
+        this.$fonts = XmlNode('fonts').attr('count',0).attr("x14ac:knownFonts","1");
+        this.$fills = XmlNode('fills').attr('count',0);
+        this.$borders = XmlNode('borders').attr('count',0);
+        this.$numFmts = XmlNode('numFmts').attr('count',0);
+        this.$cellStyleXfs = XmlNode('cellStyleXfs');
+        this.$xf = XmlNode('xf')
+            .attr('numFmtId', 0)
+            .attr('fontId', 0)
+            .attr('fillId', 0)
+            .attr('borderId', 0);
+
+        this.$cellXfs = XmlNode('cellXfs').attr('count',0);
+        this.$cellStyles = XmlNode('cellStyles')
+            .append(XmlNode('cellStyle')
+                .attr('name', 'Normal')
+                .attr('xfId',0)
+                .attr('builtinId',0)
+            );
+        this.$dxfs = XmlNode('dxfs').attr('count', "0");
+        this.$tableStyles = XmlNode('tableStyles')
+            .attr('count','0')
+            .attr('defaultTableStyle','TableStyleMedium9')
+            .attr('defaultPivotStyle','PivotStyleMedium4')
+
+
+        this.$styles = XmlNode('styleSheet')
+            .attr('xmlns:mc','http://schemas.openxmlformats.org/markup-compatibility/2006')
+            .attr('xmlns:x14ac','http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac')
+            .attr('xmlns','http://schemas.openxmlformats.org/spreadsheetml/2006/main')
+            .attr('mc:Ignorable','x14ac')
+            .prefix('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>')
+            .append(this.$numFmts)
+            .append(this.$fonts)
+            .append(this.$fills)
+            .append(this.$borders)
+            .append(this.$cellStyleXfs.append(this.$xf))
+            .append(this.$cellXfs)
+            .append(this.$cellStyles)
+            .append(this.$dxfs)
+            .append(this.$tableStyles);
+
+
+        // need to specify styles at index 0 and 1.
+        // the second style MUST be gray125 for some reason
+
+        var defaultStyle = options.defaultCellStyle || {};
+        if (!defaultStyle.font) defaultStyle.font = {name: 'Calibri', sz: '12'};
+        if (!defaultStyle.font.name) defaultStyle.font.name = 'Calibri';
+        if (!defaultStyle.font.sz) defaultStyle.font.sz = 11;
+        if (!defaultStyle.fill) defaultStyle.fill = {  patternType: "none", fgColor: {}};
+        if (!defaultStyle.border) defaultStyle.border = {};
+        if (!defaultStyle.numFmt) defaultStyle.numFmt = 0;
+
+        this.defaultStyle = defaultStyle;
+
+        var gray125Style = JSON.parse(JSON.stringify(defaultStyle));
+        gray125Style.fill = {patternType: "gray125", fgColor: { }}
+
+        this.addStyles([defaultStyle, gray125Style]);
+        return this;
+      },
+
+      // create a style entry and returns an integer index that can be used in the cell .s property
+      // these format of this object follows the emerging Common Spreadsheet Format
+      addStyle: function (attributes) {
+
+        var hashKey = JSON.stringify(attributes);
+        var index = _hashIndex[hashKey];
+        if (index == undefined) {
+
+          index = this._addXf(attributes); //_listIndex.push(attributes) -1;
+          _hashIndex[hashKey] = index;
+        }
+        else {
+          index = _hashIndex[hashKey];
+        }
+        return index;
+      },
+
+      // create style entries and returns array of integer indexes that can be used in cell .s property
+      addStyles: function (styles) {
+        var self = this;
+        return styles.map(function (style) {
+          return self.addStyle(style);
+        })
+      },
+
+      _duckTypeStyle: function(attributes) {
+
+        if (typeof attributes == 'object' && (attributes.patternFill || attributes.fgColor)) {
+          return {fill: attributes }; // this must be read via XLSX.parseFile(...)
+        }
+        else if (attributes.font || attributes.numFmt || attributes.border || attributes.fill) {
+          return attributes;
+        }
+        else {
+          return this._getStyleCSS(attributes)
+        }
+      },
+
+      _getStyleCSS: function(css) {
+        return css; //TODO
+      },
+
+      // Create an <xf> record for the style as well as corresponding <font>, <fill>, <border>, <numfmts>
+      // Right now this is simple and creates a <font>, <fill>, <border>, <numfmts> for every <xf>
+      // We could perhaps get fancier and avoid duplicating  auxiliary entries as Excel presumably intended, but bother.
+      _addXf: function (attributes) {
+
+
+        var fontId = this._addFont(attributes.font);
+        var fillId = this._addFill(attributes.fill);
+        var borderId = this._addBorder(attributes.border);
+        var numFmtId = this._addNumFmt(attributes.numFmt);
+
+        var $xf = XmlNode('xf')
+            .attr("numFmtId", numFmtId)
+            .attr("fontId", fontId)
+            .attr("fillId", fillId)
+            .attr("borderId", borderId)
+            .attr("xfId", "0");
+
+        if (fontId > 0) {
+          $xf.attr('applyFont', "1");
+        }
+        if (fillId > 0) {
+          $xf.attr('applyFill', "1");
+        }
+        if (borderId > 0) {
+          $xf.attr('applyBorder', "1");
+        }
+        if (numFmtId > 0) {
+          $xf.attr('applyNumberFormat', "1");
+        }
+
+        if (attributes.alignment) {
+          var $alignment = XmlNode('alignment');
+          if (attributes.alignment.horizontal) { $alignment.attr('horizontal', attributes.alignment.horizontal);}
+          if (attributes.alignment.vertical)  { $alignment.attr('vertical', attributes.alignment.vertical);}
+          if (attributes.alignment.indent)  { $alignment.attr('indent', attributes.alignment.indent);}
+          if (attributes.alignment.readingOrder)  { $alignment.attr('readingOrder', attributes.alignment.readingOrder);}
+          if (attributes.alignment.wrapText)  { $alignment.attr('wrapText', attributes.alignment.wrapText);}
+          if (attributes.alignment.textRotation!=undefined)  { $alignment.attr('textRotation', attributes.alignment.textRotation);}
+
+          $xf.append($alignment).attr('applyAlignment',1)
+
+        }
+        this.$cellXfs.append($xf);
+        var count = +this.$cellXfs.children().length;
+
+        this.$cellXfs.attr('count', count);
+        return count - 1;
+      },
+
+      _addFont: function (attributes) {
+
+        if (!attributes) {  return 0; }
+
+        var $font = XmlNode('font')
+            .append(XmlNode('sz').attr('val', attributes.sz || this.defaultStyle.font.sz))
+            .append(XmlNode('name').attr('val', attributes.name || this.defaultStyle.font.name))
+
+        if (attributes.bold) $font.append(XmlNode('b'));
+        if (attributes.underline)  $font.append(XmlNode('u'));
+        if (attributes.italic)  $font.append(XmlNode('i'));
+        if (attributes.strike)  $font.append(XmlNode('strike'));
+        if (attributes.outline)  $font.append(XmlNode('outline'));
+        if (attributes.shadow)  $font.append(XmlNode('shadow'));
+
+        if (attributes.vertAlign) {
+          $font.append(XmlNode('vertAlign').attr('val', attributes.vertAlign))
+        }
+
+
+        if (attributes.color) {
+          if (attributes.color.theme) {
+            $font.append(XmlNode('color').attr('theme', attributes.color.theme))
+
+            if (attributes.color.tint) { //tint only if theme
+              $font.append(XmlNode('tint').attr('theme', attributes.color.tint))
+            }
+
+          } else if (attributes.color.rgb) { // not both rgb and theme
+            $font.append(XmlNode('color').attr('rgb', attributes.color.rgb))
+          }
+        }
+
+        this.$fonts.append($font);
+
+        var count = this.$fonts.children().length;
+        this.$fonts.attr('count', count);
+        return count - 1;
+      },
+
+        _addNumFmt: function (numFmt) {
+        if (!numFmt) { return 0; }
+
+        if (typeof numFmt == 'string') {
+          var numFmtIdx = fmt_table[numFmt];
+          if (numFmtIdx >= 0) {
+            return numFmtIdx; // we found a match against built in formats
+          }
+        }
+
+        if (/^[0-9]+$/.exec(numFmt)) {
+          return numFmt; // we're matching an integer against some known code
+        }
+        numFmt = numFmt
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+
+        var $numFmt = XmlNode('numFmt')
+            .attr('numFmtId', (++customNumFmtId))
+            .attr('formatCode', numFmt);
+
+        this.$numFmts.append($numFmt);
+
+        var count = this.$numFmts.children().length;
+        this.$numFmts.attr('count', count);
+        return customNumFmtId ;
+      },
+
+      _addFill: function (attributes) {
+
+        if (!attributes) { return 0; }
+
+        var $patternFill = XmlNode('patternFill')
+            .attr('patternType', attributes.patternType || 'solid');
+
+        if (attributes.fgColor) {
+          var $fgColor = XmlNode('fgColor');
+
+          //Excel doesn't like it when we set both rgb and theme+tint, but xlsx.parseFile() sets both
+          //var $fgColor = createElement('<fgColor/>', null, null, {xmlMode: true}).attr(attributes.fgColor)
+          if (attributes.fgColor.rgb) {
+
+            if (attributes.fgColor.rgb.length == 6) {
+              attributes.fgColor.rgb = "FF" + attributes.fgColor.rgb /// add alpha to an RGB as Excel expects aRGB
+            }
+
+            $fgColor.attr('rgb', attributes.fgColor.rgb);
+            $patternFill.append($fgColor);
+          }
+          else if (attributes.fgColor.theme) {
+            $fgColor.attr('theme', attributes.fgColor.theme);
+            if (attributes.fgColor.tint) {
+              $fgColor.attr('tint', attributes.fgColor.tint);
+            }
+            $patternFill.append($fgColor);
+          }
+
+          if (!attributes.bgColor) {
+            attributes.bgColor = { "indexed": "64"}
+          }
+        }
+
+        if (attributes.bgColor) {
+          var $bgColor = XmlNode('bgColor').attr(attributes.bgColor);
+          $patternFill.append($bgColor);
+        }
+
+        var $fill = XmlNode('fill')
+            .append($patternFill);
+
+        this.$fills.append($fill);
+
+        var count = this.$fills.children().length;
+        this.$fills.attr('count', count);
+        return count - 1;
+      },
+
+      _getSubBorder: function(direction, spec) {
+
+        var $direction = XmlNode(direction);
+        if (spec){
+          if (spec.style) $direction.attr('style', spec.style);
+          if (spec.color) {
+            var $color = XmlNode('color');
+            if (spec.color.auto) {
+              $color.attr('auto', spec.color.auto);
+            }
+            else if (spec.color.rgb) {
+              $color.attr('rgb', spec.color.rgb);
+            }
+            else if (spec.color.theme || spec.color.tint) {
+              $color.attr('theme', spec.color.theme || "1");
+              $color.attr('tint', spec.color.tint || "0");
+            }
+            $direction.append($color)
+          }
+        }
+        return $direction;
+      },
+
+      _addBorder: function (attributes) {
+        if (!attributes) { return 0; }
+
+        var self = this;
+
+        var $border = XmlNode('border')
+            .attr("diagonalUp",attributes.diagonalUp)
+            .attr("diagonalDown",attributes.diagonalDown);
+
+        var directions = ["left","right","top","bottom","diagonal"];
+
+        directions.forEach(function(direction) {
+          $border.append(self._getSubBorder(direction, attributes[direction]))
+        });
+        this.$borders.append($border);
+
+        var count = this.$borders.children().length;
+        this.$borders.attr('count', count);
+        return count -1;
+      },
+
+      toXml: function () {
+        return this.$styles.toXml();
+      }
+    }.initialize(options||{});
+  }
+/////////////////////////////////////////////////////////////////////////////////////////////////////
 
 if(typeof parse_xlscfb !== "undefined") XLSX.parse_xlscfb = parse_xlscfb;
 XLSX.parse_zip = parse_zip;
