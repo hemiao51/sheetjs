@@ -21717,7 +21717,13 @@ var utils = {
 	sheet_to_json: sheet_to_json,
 	sheet_to_html: HTML_.from_sheet,
 	sheet_to_formulae: sheet_to_formulae,
-	sheet_to_row_object_array: sheet_to_json
+	sheet_to_row_object_array: sheet_to_json,
+	// HM Add
+	escapehtml: escapehtml,
+	writextag: writextag,
+	rgb_tint: rgb_tint,
+	BErr: BErr,
+	RBErr: RBErr,
 };
 
 (function(utils) {

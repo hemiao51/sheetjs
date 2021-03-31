@@ -816,6 +816,12 @@ export interface XLSX$Utils {
     sheet_add_json(ws: WorkSheet, data: any[], opts?: SheetJSONOpts): WorkSheet;
     sheet_add_json<T>(ws: WorkSheet, data: T[], opts?: SheetJSONOpts): WorkSheet;
 
+    /** HM Add */
+    escapehtml( v?: any): string;
+    writextag( f?: any, g?: any, h?: any): string;
+    rgb_tint( hex?: any, tint?: any): string;
+    BErr(): object;
+    RBErr(): object;
 
     consts: XLSX$Consts;
 }
